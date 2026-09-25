@@ -17,6 +17,9 @@ SciPy, Matplotlib, JAX and BlackJAX.
 
 ## View the new results
 
+For the manuscript, see the [three Cauchy comparison figures](paper/README.md),
+with vector PDFs, high-resolution PNGs, raw averages and LaTeX captions.
+
 - [Student t(3), absolute value](examples/simple/qq_t3_abs.png)
 - [Student t(1), tail probability](examples/simple/qq_t1_tail.png)
 - [Student t(1.5), tail probability](examples/simple/qq_t1p5_tail.png)

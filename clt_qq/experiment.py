@@ -110,8 +110,14 @@ def transition(x, case, method, epsilon, rng):
         if not np.isfinite(q).all():
             raise FloatingPointError("Nonfinite ULA position; reduce the step size.")
         return q, x.size, 0
-    counts = (rng.integers(1, method.steps + 1, size=x.size) if method.kind == "random"
-              else np.full(x.size, method.steps))
+    if method.kind == "random":
+        counts = rng.integers(1, method.steps + 1, size=x.size)
+    elif method.kind == "two_point":
+        # Draw afresh, independently of position and momentum, so this remains
+        # a mixture of individually reversible fixed-length HMC kernels.
+        counts = np.where(rng.integers(0, 2, size=x.size), method.steps, 1)
+    else:
+        counts = np.full(x.size, method.steps)
     p = rng.normal(size=x.size)
     q, p_new = leapfrog(x, p, case.df, epsilon, counts)
     accepted = 0

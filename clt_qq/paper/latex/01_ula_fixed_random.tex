@@ -1,0 +1,18 @@
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\textwidth]{figures/01_ula_fixed_random.pdf}
+    \caption{Gaussian QQ plots of Cauchy tail-probability averages for ULA,
+    unadjusted HMC with $T=10$ leapfrog steps, and unadjusted HMC with an
+    independent $T\sim\mathrm{Unif}\{1,\ldots,19\}$ at each iteration.
+    The potential is $U(x)=\log(1+x^2)$ and the observable is
+    $g(x)=\mathbf{1}_{\{x\geq2\}}$. Each panel contains 2,000 independent
+    chains started at zero, run for 30,000 iterations with the first 10,000
+    discarded. Step size is $h=0.35$, mass is one, and tuning is fixed.
+    Vertical coordinates are the ordered raw chain averages; horizontal
+    coordinates are Gaussian quantiles fitted using their sample mean and
+    standard deviation. There is no $\sqrt n$ scaling. The line is $y=x$;
+    axis limits are chosen separately and every average is shown.
+    All three kernels are unadjusted and may have invariant-distribution bias.}
+    \label{fig:ula-fixed-random}
+\end{figure}
+
