@@ -49,6 +49,9 @@ x_i = mean(A) + std(A, ddof=1) * NormalQuantile((i + 0.5) / N)
 ```
 
 Both axes are in the observable's original units; the reference is `y=x`.
+The axes use independent ranges so extreme observed averages do not compress
+the normal quantiles horizontally. Consequently, `y=x` need not look like a
+45-degree line on the page.
 There is one cloud of points per panel, no sample-size overlays, and no target
 centering. All points are kept, including extremes. Each sampler also gets a
 standalone PNG and PDF.

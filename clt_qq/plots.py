@@ -28,17 +28,22 @@ def _draw_qq(ax, values, title):
     from matplotlib.ticker import MaxNLocator
 
     theoretical, empirical = normal_qq_coordinates(values)
-    low = min(theoretical[0], empirical[0])
-    high = max(theoretical[-1], empirical[-1])
-    width = high - low
-    padding = 0.05 * width if width > 0 else 0.05 * max(abs(low), 1.0)
-    limits = (low - padding, high + padding)
-    ax.plot(limits, limits, color="#b83b3b", linewidth=1.2, zorder=1)
+    def padded_limits(values):
+        low, high = values[0], values[-1]
+        width = high - low
+        padding = 0.05 * width if width > 0 else 0.05 * max(abs(low), 1.0)
+        return low - padding, high + padding
+
+    # Each axis follows its own quantiles. A large observed average should
+    # expand the vertical axis without adding empty horizontal space.
+    x_limits = padded_limits(theoretical)
+    y_limits = padded_limits(empirical)
+    ax.plot(x_limits, x_limits, color="#b83b3b", linewidth=1.2, zorder=1)
     ax.scatter(theoretical, empirical, s=9, color="#2463a6", alpha=0.7,
                edgecolors="none", zorder=2)
-    ax.set(xlim=limits, ylim=limits, title=title,
+    ax.set(xlim=x_limits, ylim=y_limits, title=title,
            xlabel="Fitted normal quantiles", ylabel="Ergodic averages")
-    ax.set_aspect("equal", adjustable="box")
+    ax.set_box_aspect(1)
     ax.xaxis.set_major_locator(MaxNLocator(nbins=4))
     ax.yaxis.set_major_locator(MaxNLocator(nbins=4))
     ax.tick_params(labelsize=9)
