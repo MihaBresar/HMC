@@ -1,26 +1,28 @@
 # HMC
 
-## Simple CLT QQ experiments
+[Simple QQ experiments: code, instructions and plots](clt_qq/README.md)
+compare ULA, fixed/random-step HMC (adjusted and unadjusted), and NUTS against
+an i.i.d. reference.
 
-[Code, instructions and example plots](clt_qq/README.md) compare ULA, adjusted
-and unadjusted HMC with fixed/random leapfrog counts, and NUTS against an i.i.d.
-reference. The examples use `abs(x)` under Student t(3), and tail probabilities
-under Student t(1) and t(1.5).
+The examples use `abs(x)` under Student t(3), and `1{x >= 2}` under Student
+t(1) and t(1.5). Each sampler runs **2,000 independent chains of 30,000
+iterations**, starts them at zero, discards the first 10,000 iterations, and
+computes one ergodic average per chain. All samplers support parallel workers.
 
 ```bash
 python -m pip install -r clt_qq/requirements.txt
-python -m clt_qq.experiment --workers 3
+python -m clt_qq.experiment --workers 6
 ```
 
-![QQ plots for Student t(3) and absolute value](clt_qq/examples/qq_t3_abs.png)
+![Simple QQ plots for Student t(3) and absolute value](clt_qq/examples/simple/qq_t3_abs.png)
 
-The QQ points represent independent chain averages. Companion plots check
-square-root-n fluctuation widths. These finite-run diagnostics distinguish
-non-Gaussian shape from discretization bias; they do not by themselves prove
-CLT failure, particularly for NUTS.
+QQ plots compare raw chain averages against a fitted Gaussian, with an identity
+line and **no square-root-n scaling**. See the [individual plots](clt_qq/examples/simple/individual/)
+and [raw chain averages](clt_qq/examples/simple/).
 
-## Earlier experiment
+The simulation follows the design of [Brešar, Mijatović and Roberts, Appendix B](https://arxiv.org/html/2512.18255v1#A2)
+at a smaller computational scale. QQ shape alone does not prove CLT failure.
 
-[`SamlerComparison.py`](SamlerComparison.py) compares RWM and BlackJAX NUTS on
-a multivariate skew-t target. Its dependencies and settings are documented in
-that file.
+The earlier [`SamlerComparison.py`](SamlerComparison.py) compares RWM and
+BlackJAX NUTS on a multivariate skew-t target; its dependencies and settings
+are documented in that file.

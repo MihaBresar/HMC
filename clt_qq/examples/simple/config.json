@@ -1,0 +1,32 @@
+{
+  "chains": 2000,
+  "iterations": 30000,
+  "burn_in": 10000,
+  "step_size": 0.35,
+  "fixed_steps": [
+    5,
+    10
+  ],
+  "random_max": 10,
+  "max_depth": 7,
+  "tail_threshold": 2.0,
+  "seed": 20260925,
+  "workers": 6,
+  "batch_size": 128,
+  "cases": [
+    "t3_abs",
+    "t1_tail",
+    "t1p5_tail"
+  ],
+  "methods": null,
+  "output": "clt_qq/examples/simple",
+  "python_version": "3.14.2",
+  "numpy_version": "2.4.0",
+  "scipy_version": "1.16.3",
+  "matplotlib_version": "3.10.8",
+  "initialization": "Every chain starts at zero",
+  "retained_per_chain": 20000,
+  "qq": "Raw chain means versus Normal(mean(chain_means), var(chain_means, ddof=1)); identity line; no sqrt(n)",
+  "cost_note": "Force evaluations exclude burn-in; equal iterations, not equal work",
+  "rng_note": "Independent streams by case/method/batch; per-chain streams for NUTS; worker count does not change results"
+}
