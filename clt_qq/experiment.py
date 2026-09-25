@@ -175,7 +175,8 @@ def run_ensemble(case, method, args, pool=None, progress=False):
     NUTS has a separate generator for every chain. No chain interacts with
     another, and no chain is split into pseudo-independent subsamples.
     """
-    batch_size = min(args.batch_size, 16) if method.kind == "nuts" else args.batch_size
+    batch_size = (min(args.batch_size, getattr(args, "nuts_batch_size", 16))
+                  if method.kind == "nuts" else args.batch_size)
     tasks = [(case, method, args, start, min(batch_size, args.chains-start), batch_id)
              for batch_id, start in enumerate(range(0, args.chains, batch_size))]
     if pool is None and args.workers > 1:

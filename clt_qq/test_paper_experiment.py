@@ -10,11 +10,40 @@ import numpy as np
 from scipy.special import stdtr
 
 from .experiment import leapfrog, potential, run_ensemble, transition
-from .paper_experiment import (CASE, BASELINE_KEYS, ROOT, load_saved, method_settings,
-                               paper_methods, parse_args, save_results, signature)
+from .paper_experiment import (CASE, BASELINE_KEYS, ROOT, load_saved, main, method_settings,
+                               paper_methods, parse_args, save_results, selected_case,
+                               selected_methods, signature)
 
 
 class PaperExperimentTests(unittest.TestCase):
+    def test_defaults_retain_80000_and_select_each_figures_methods(self):
+        first = parse_args(["--case", "t3_abs"])
+        self.assertEqual((first.chains, first.iterations, first.burn_in), (2000, 120000, 40000))
+        self.assertEqual(first.iterations-first.burn_in, 80000)
+        self.assertEqual(first.output, ROOT / "paper/data_80k/t3_abs")
+        self.assertEqual([method.key for method in selected_methods(first)],
+                         ["ula", "uhmc_10", "uhmc_uniform_19"])
+        case = selected_case(first)
+        self.assertEqual((case.df, case.observable), (3.0, "abs"))
+        self.assertAlmostEqual(case.truth(2), 2*np.sqrt(3)/np.pi)
+        tail = parse_args([])
+        self.assertEqual(selected_case(tail).key, "t1_tail")
+        self.assertEqual(tail.output, ROOT / "paper/data_80k/t1_tail")
+        self.assertEqual(len(selected_methods(tail)), 9)
+        self.assertTrue(all(method.adjusted for method in selected_methods(tail)))
+
+    def test_requested_subset_and_nuts_partition_do_not_invalidate_signature(self):
+        nuts = parse_args(["--methods", "nuts", "--nuts-batch-size", "4"])
+        full = parse_args(["--nuts-batch-size", "16"])
+        self.assertEqual([method.key for method in selected_methods(nuts)], ["nuts"])
+        self.assertEqual(signature(nuts), signature(full))
+        first = parse_args(["--case", "t3_abs"])
+        self.assertNotEqual(signature(nuts), signature(first))
+
+    def test_80000_protocol_does_not_reuse_historical_baseline(self):
+        args = parse_args([])
+        self.assertEqual(load_saved(ROOT / "examples/simple", args, baseline=True), ({}, {}, {}))
+
     def test_random_laws_match_mean_length_but_not_second_moment(self):
         methods = {method.key: method for method in paper_methods()}
         for mean, upper in ((5, 9), (20, 39)):
@@ -78,7 +107,7 @@ class PaperExperimentTests(unittest.TestCase):
                         self.assertEqual(serial_info[key], parallel_info[key])
 
     def test_baseline_reuse_is_exact_and_rejects_changed_protocol(self):
-        args = parse_args([])
+        args = parse_args(["--iterations", "30000", "--burn-in", "10000"])
         means, diagnostics, _ = load_saved(ROOT / "examples/simple", args, baseline=True)
         self.assertEqual(set(means), BASELINE_KEYS)
         with np.load(ROOT / "examples/simple/means_t1_tail.npz") as original:
@@ -101,6 +130,43 @@ class PaperExperimentTests(unittest.TestCase):
             self.assertEqual(loaded_info, diagnostics)
             args.step_size = 0.36
             self.assertEqual(load_saved(Path(directory), args), ({}, {}, {}))
+
+    def test_method_subset_resume_preserves_actual_previous_chains(self):
+        with tempfile.TemporaryDirectory() as directory:
+            common = ["--case", "t3_abs", "--output", directory, "--chains", "8",
+                      "--iterations", "15", "--workers", "1"]
+            main([*common, "--methods", "ula"])
+            with np.load(Path(directory) / "means_t3_abs.npz") as saved:
+                original = saved["ula"].copy()
+                self.assertAlmostEqual(float(saved["target_mean"]), 2*np.sqrt(3)/np.pi)
+            main([*common, "--methods", "uhmc_10"])
+            args = parse_args(common)
+            means, diagnostics, config = load_saved(Path(directory), args)
+            self.assertEqual(set(means), {"ula", "uhmc_10"})
+            np.testing.assert_array_equal(means["ula"], original)
+            self.assertEqual(set(diagnostics), {"t3_abs/ula", "t3_abs/uhmc_10"})
+            self.assertEqual(config["observable"], "abs")
+            self.assertNotIn("nuts", config)
+
+    def test_saved_case_and_embedded_metadata_must_match(self):
+        with tempfile.TemporaryDirectory() as directory:
+            args = parse_args(["--case", "t3_abs", "--output", directory,
+                               "--chains", "8", "--iterations", "12"])
+            diagnostics = {"t3_abs/ula": {"worker_processes_used": 1}}
+            config = {"experiment_signature": signature(args)}
+            save_results(args, {"ula": np.ones(8)}, diagnostics, config)
+            other = parse_args(["--case", "t1_tail", "--output", directory,
+                               "--chains", "8", "--iterations", "12"])
+            # Even a wrongly named copy cannot make another case's data reusable.
+            path = Path(directory) / "means_t3_abs.npz"
+            (Path(directory) / "means_t1_tail.npz").write_bytes(path.read_bytes())
+            self.assertEqual(load_saved(Path(directory), other), ({}, {}, {}))
+            with np.load(path) as saved:
+                entries = {key: saved[key].copy() for key in saved.files}
+            entries["target_mean"] = np.array(0.5)
+            np.savez_compressed(path, **entries)
+            with self.assertRaisesRegex(ValueError, "Stored metadata"):
+                load_saved(Path(directory), args)
 
 
 if __name__ == "__main__":

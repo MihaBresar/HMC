@@ -17,8 +17,9 @@ SciPy, Matplotlib, JAX and BlackJAX.
 
 ## View the new results
 
-For the manuscript, see the [three Cauchy comparison figures](paper/README.md),
-with vector PDFs, high-resolution PNGs, raw averages and LaTeX captions.
+For the manuscript, see the [three comparison figures](paper/README.md), with
+80,000 retained iterations per chain: t(3) absolute moments first, then Cauchy
+tail probabilities. Vector PDFs, PNGs, raw averages and LaTeX captions are included.
 
 - [Student t(3), absolute value](examples/simple/qq_t3_abs.png)
 - [Student t(1), tail probability](examples/simple/qq_t1_tail.png)

@@ -10,8 +10,9 @@ iterations**, starts them at zero, discards the first 10,000 iterations, and
 computes one ergodic average per chain. All samplers support parallel workers.
 NUTS uses the standard BlackJAX kernel with its library defaults.
 
-The [three manuscript figures](clt_qq/paper/README.md) compare ULA with HMC,
-different randomisation laws and lengths, and HMC with NUTS on the Cauchy example.
+The [three manuscript figures](clt_qq/paper/README.md) use 80,000 retained
+iterations per chain: t(3) absolute moments for ULA versus HMC, then Cauchy tail
+probabilities for different randomisation laws and lengths and HMC versus NUTS.
 
 ```bash
 python -m pip install -r clt_qq/requirements.txt

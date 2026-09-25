@@ -4,10 +4,14 @@
     \caption{Cauchy tail-probability averages under Metropolis-adjusted HMC
     with $T=10$, Metropolis-adjusted HMC with independent
     $T\sim\mathrm{Unif}\{1,\ldots,19\}$ at each iteration, and NUTS.
-    NUTS uses BlackJAX 1.6.2 with JAX 0.11.2, standard trajectory
-    construction and its library defaults, with no adaptation.
-    All methods use the fixed step size, unit mass, replication, burn-in
-    and raw Gaussian QQ construction of Figure~\ref{fig:ula-fixed-random}.
+    The target is standard Cauchy, $U(x)=\log(1+x^2)$, with
+    $g(x)=\mathbf{1}_{\{x\geq2\}}$.
+    NUTS uses BlackJAX 1.6.2 with JAX 0.11.2, standard multinomial
+    trajectory construction and the library's default tree limit.
+    Each panel uses 2,000 independent chains and 80,000 retained observations
+    per chain. All methods use fixed step size $h=0.35$, unit mass and no
+    adaptation, with initialisation, burn-in and the raw Gaussian QQ
+    construction as in Figure~\ref{fig:ula-fixed-random}.
     Iteration counts are equal; gradient costs differ.
     The plots compare finite-run distributional shape and do not establish
     polynomial convergence rates or CLT failure for NUTS.}

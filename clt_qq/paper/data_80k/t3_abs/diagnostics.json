@@ -1,0 +1,80 @@
+{
+  "t3_abs/ula": {
+    "chains_completed": 2000,
+    "worker_pids": [
+      6781,
+      6782,
+      6783,
+      6784,
+      6785,
+      6786
+    ],
+    "worker_processes_used": 6,
+    "batches": 16,
+    "iterations_per_chain": 120000,
+    "burn_in_per_chain": 40000,
+    "retained_per_chain": 80000,
+    "force_evals_per_retained_draw": 1.0,
+    "acceptance_rate": null,
+    "mean_integration_acceptance_probability": null,
+    "depth_cap_fraction": null,
+    "divergence_fraction": null,
+    "seconds": 3.074922959000105,
+    "provenance": {
+      "kind": "paper_experiment",
+      "module": "clt_qq.paper_experiment"
+    }
+  },
+  "t3_abs/uhmc_10": {
+    "chains_completed": 2000,
+    "worker_pids": [
+      6781,
+      6782,
+      6783,
+      6784,
+      6785,
+      6786
+    ],
+    "worker_processes_used": 6,
+    "batches": 16,
+    "iterations_per_chain": 120000,
+    "burn_in_per_chain": 40000,
+    "retained_per_chain": 80000,
+    "force_evals_per_retained_draw": 11.0,
+    "acceptance_rate": null,
+    "mean_integration_acceptance_probability": null,
+    "depth_cap_fraction": null,
+    "divergence_fraction": null,
+    "seconds": 27.094804332999956,
+    "provenance": {
+      "kind": "paper_experiment",
+      "module": "clt_qq.paper_experiment"
+    }
+  },
+  "t3_abs/uhmc_uniform_19": {
+    "chains_completed": 2000,
+    "worker_pids": [
+      6781,
+      6782,
+      6783,
+      6784,
+      6785,
+      6786
+    ],
+    "worker_processes_used": 6,
+    "batches": 16,
+    "iterations_per_chain": 120000,
+    "burn_in_per_chain": 40000,
+    "retained_per_chain": 80000,
+    "force_evals_per_retained_draw": 10.99974071875,
+    "acceptance_rate": null,
+    "mean_integration_acceptance_probability": null,
+    "depth_cap_fraction": null,
+    "divergence_fraction": null,
+    "seconds": 57.05587954099974,
+    "provenance": {
+      "kind": "paper_experiment",
+      "module": "clt_qq.paper_experiment"
+    }
+  }
+}

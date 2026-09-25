@@ -21,12 +21,12 @@ from .plots import normal_qq_coordinates
 
 # The order and settings are specified before looking at the new simulations.
 FIGURES = (
-    ("01_ula_fixed_random", 1, (
+    ("01_ula_fixed_random", "t3_abs", 1, (
         ("ula", "ULA\n$T=1$"),
         ("uhmc_10", "Unadjusted HMC\n$T=10$"),
         ("uhmc_uniform_19", "Unadjusted HMC\n$T\\sim\\mathrm{Unif}\\{1,\\ldots,19\\}$"),
     )),
-    ("02_randomisation_and_length", 2, (
+    ("02_randomisation_and_length", "t1_tail", 2, (
         ("hmc_5", "Fixed\n$T=5$"),
         ("hmc_uniform_9", "Uniform\n$T\\sim\\mathrm{Unif}\\{1,\\ldots,9\\}$"),
         ("hmc_two_point_9", "Two-point\n$T\\in\\{1,9\\}$, equally likely"),
@@ -34,7 +34,7 @@ FIGURES = (
         ("hmc_uniform_39", "Uniform\n$T\\sim\\mathrm{Unif}\\{1,\\ldots,39\\}$"),
         ("hmc_two_point_39", "Two-point\n$T\\in\\{1,39\\}$, equally likely"),
     )),
-    ("03_hmc_nuts", 1, (
+    ("03_hmc_nuts", "t1_tail", 1, (
         ("hmc_10", "Metropolis HMC\n$T=10$"),
         ("hmc_uniform_19", "Metropolis HMC\n$T\\sim\\mathrm{Unif}\\{1,\\ldots,19\\}$"),
         ("nuts", "NUTS\n"),
@@ -69,35 +69,50 @@ def draw_panel(ax, values, title, letter):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--data", type=Path, default=Path("clt_qq/paper/data"))
+    parser.add_argument("--data", type=Path, default=Path("clt_qq/paper/data_80k"))
     parser.add_argument("--output", type=Path, default=Path("clt_qq/paper/figures"))
+    parser.add_argument("--figures", nargs="+", choices=[item[0] for item in FIGURES],
+                        help="Build only these figures; default builds all three")
     args = parser.parse_args(argv)
-    config = json.loads((args.data / "config.json").read_text())
-    signature = config["experiment_signature"]
-    if (signature["df"] != 1.0 or signature["observable"] != "tail"
-            or config["tail_threshold"] != 2.0 or config["step_size"] != .35):
-        raise ValueError("These manuscript captions require the Cauchy tail at 2 and step size 0.35")
-    source = args.data / "means_t1_tail.npz"
-    with np.load(source) as archive:
-        means = {key: archive[key].copy() for key in archive.files}
-    count = len(means["chain_ids"])
-    iterations, burn_in = int(means["iterations"]), int(means["burn_in"])
-    if (count != config["chains"] or iterations != config["iterations"]
-            or burn_in != config["burn_in"]):
-        raise ValueError("Saved chain metadata disagrees with the experiment configuration")
-    for _, _, panels in FIGURES:
+    figures = [item for item in FIGURES if args.figures is None or item[0] in args.figures]
+    required_cases = {item[1] for item in figures}
+    datasets, sources = {}, {}
+    for case_key, df, observable in (("t3_abs", 3., "abs"), ("t1_tail", 1., "tail")):
+        if case_key not in required_cases:
+            continue
+        directory = args.data / case_key
+        config = json.loads((directory / "config.json").read_text())
+        signature = config["experiment_signature"]
+        if (signature["case"] != case_key or signature["df"] != df
+                or signature["observable"] != observable
+                or config["tail_threshold"] != 2.0 or config["step_size"] != .35):
+            raise ValueError(f"Incorrect target or sampler settings for {case_key}")
+        source = directory / f"means_{case_key}.npz"
+        with np.load(source) as archive:
+            means = {key: archive[key].copy() for key in archive.files}
+        count = len(means["chain_ids"])
+        iterations, burn_in = int(means["iterations"]), int(means["burn_in"])
+        if (count != config["chains"] or iterations != config["iterations"]
+                or burn_in != config["burn_in"]):
+            raise ValueError("Saved chain metadata disagrees with the experiment configuration")
+        if (count, iterations, burn_in) != (2000, 120000, 40000):
+            raise ValueError("These manuscript captions require 2,000 chains and 80,000 retained iterations")
+        if not np.array_equal(means["chain_ids"], np.arange(count)):
+            raise ValueError("Missing or duplicated chain IDs")
+        datasets[case_key] = means
+        sources[case_key] = {"path": str(source),
+                             "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+                             "df": df, "observable": observable}
+    for _, case_key, _, panels in figures:
         for key, _ in panels:
-            values = means[key]
+            values = datasets[case_key][key]
             if values.shape != (count,) or not np.isfinite(values).all():
                 raise ValueError(f"Invalid chain averages for {key}")
-            if np.any((values < 0) | (values > 1)):
-                raise ValueError(f"Tail indicator average outside [0, 1]: {key}")
+            if np.any(values < 0) or (case_key == "t1_tail" and np.any(values > 1)):
+                raise ValueError(f"Observable average outside its range: {case_key}/{key}")
     args.output.mkdir(parents=True, exist_ok=True)
     manifest = {
-        "source": str(source),
-        "source_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
-        "target": "Student t(1), standard Cauchy",
-        "observable": "1{x >= 2}",
+        "sources": sources,
         "chains": count, "iterations": iterations, "burn_in": burn_in,
         "retained": iterations - burn_in,
         "qq": "Raw ordered means versus fitted Gaussian; identity line; all points retained",
@@ -111,7 +126,8 @@ def main(argv=None):
         "axes.unicode_minus": True,
     }
     with plt.rc_context(style):
-        for name, rows, panels in FIGURES:
+        for name, case_key, rows, panels in figures:
+            means = datasets[case_key]
             fig, axes = plt.subplots(rows, 3, figsize=(7., 2.9 if rows == 1 else 5.25),
                                      squeeze=False)
             fig.subplots_adjust(left=.09, right=.985, bottom=.24 if rows == 1 else .14,
@@ -119,8 +135,10 @@ def main(argv=None):
             details = []
             for i, (ax, (key, title)) in enumerate(zip(axes.flat, panels)):
                 detail = draw_panel(ax, means[key], title, chr(ord("a") + i))
-                details.append({"panel": chr(ord("a") + i), "method": key, **detail})
-            heading = r"Cauchy target, $g(x)=\mathbf{1}_{\{x\geq 2\}}$"
+                details.append({"panel": chr(ord("a") + i), "case": case_key,
+                                "method": key, **detail})
+            heading = (r"Student $t_3$, $g(x)=|x|$" if case_key == "t3_abs"
+                       else r"Cauchy target, $g(x)=\mathbf{1}_{\{x\geq 2\}}$")
             if rows == 2:
                 heading += " - Metropolis HMC"
             fig.suptitle(heading, y=.99, fontsize=10)

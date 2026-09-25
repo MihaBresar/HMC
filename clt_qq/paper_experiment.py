@@ -1,9 +1,12 @@
-"""Reproduce the Cauchy chain averages used by the three paper figures.
+"""Reproduce the independent chain averages used by the three paper figures.
 
-Run ``python -m clt_qq.paper_experiment``. Compatible, previously generated
+Run ``python -m clt_qq.paper_experiment --case t3_abs`` for the first figure,
+or ``--case t1_tail`` for the second and third. Defaults retain 80,000 draws
+per chain after 40,000 burn-in transitions. Compatible, previously generated
 averages are reused exactly, with their original diagnostics and file hashes.
 Every missing method runs genuine independent chains in worker processes.
-``--recompute`` reruns every method, including the baseline samplers.
+``--methods`` selects methods to run; later invocations can add methods without
+discarding completed work. ``--recompute`` starts the selected case afresh.
 """
 
 import argparse
@@ -30,6 +33,15 @@ CASE = next(case for case in CASES if case.key == "t1_tail")
 BASELINE_KEYS = {"ula", "uhmc_10", "hmc_5", "hmc_10", "nuts"}
 SETTING_KEYS = ("chains", "iterations", "burn_in", "step_size", "tail_threshold",
                 "seed", "batch_size")
+CASE_METHOD_KEYS = {
+    "t3_abs": ("ula", "uhmc_10", "uhmc_uniform_19"),
+    "t1_tail": ("hmc_5", "hmc_10", "hmc_20", "hmc_uniform_9", "hmc_uniform_19",
+                "hmc_uniform_39", "hmc_two_point_9", "hmc_two_point_39", "nuts"),
+}
+
+
+def selected_case(args):
+    return next(case for case in CASES if case.key == getattr(args, "case", CASE.key))
 
 
 def paper_methods():
@@ -47,6 +59,11 @@ def paper_methods():
         Method("hmc_two_point_39", "HMC, P(L=1)=P(L=39)=1/2", "two_point", 39, True),
         Method("nuts", "NUTS", "nuts", adjusted=True),
     ]
+
+
+def selected_methods(args):
+    keys = args.methods or CASE_METHOD_KEYS[selected_case(args).key]
+    return [method for method in paper_methods() if method.key in keys]
 
 
 def method_settings(method):
@@ -77,16 +94,18 @@ def sha256(path):
 
 
 def signature(args):
+    case = selected_case(args)
     return {**{key: getattr(args, key) for key in SETTING_KEYS},
-            "case": CASE.key, "df": CASE.df, "observable": CASE.observable,
+            "case": case.key, "df": case.df, "observable": case.observable,
             "initial_position": 0.0,
             "methods": {method.key: method_settings(method) for method in paper_methods()}}
 
 
 def load_saved(directory, args, baseline=False):
     """Only reuse compatible complete arrays, together with their diagnostics."""
+    case = selected_case(args)
     config_path = directory / "config.json"
-    means_path = directory / f"means_{CASE.key}.npz"
+    means_path = directory / f"means_{case.key}.npz"
     diagnostics_path = directory / "diagnostics.json"
     if not all(path.is_file() for path in (config_path, means_path, diagnostics_path)):
         return {}, {}, {}
@@ -95,6 +114,7 @@ def load_saved(directory, args, baseline=False):
         compatible = all(config.get(key) == getattr(args, key) for key in SETTING_KEYS)
         compatible &= config.get("initialization") == "Every chain starts at zero"
         compatible &= config.get("nuts", {}).get("backend") == "blackjax.nuts"
+        compatible &= case.key in config.get("cases", [])
     else:
         compatible = config.get("experiment_signature") == signature(args)
     if not compatible:
@@ -105,14 +125,14 @@ def load_saved(directory, args, baseline=False):
         if not (np.array_equal(saved["chain_ids"], np.arange(args.chains))
                 and int(saved["iterations"]) == args.iterations
                 and int(saved["burn_in"]) == args.burn_in
-                and float(saved["target_mean"]) == CASE.truth(args.tail_threshold)):
+                and float(saved["target_mean"]) == case.truth(args.tail_threshold)):
             raise ValueError(f"Stored metadata does not match its configuration: {means_path}")
         for method in paper_methods():
             key = method.key
             if key not in saved or (baseline and key not in BASELINE_KEYS):
                 continue
             values = saved[key].copy()
-            diag_key = f"{CASE.key}/{key}"
+            diag_key = f"{case.key}/{key}"
             if values.shape != (args.chains,) or not np.isfinite(values).all():
                 raise ValueError(f"Invalid chain averages: {means_path}:{key}")
             if diag_key not in diagnostics:
@@ -131,17 +151,18 @@ def load_saved(directory, args, baseline=False):
 
 
 def save_results(args, means, diagnostics, config):
+    case = selected_case(args)
     ordered = {method.key: means[method.key] for method in paper_methods() if method.key in means}
-    truth = CASE.truth(args.tail_threshold)
-    np.savez_compressed(args.output / f"means_{CASE.key}.npz", chain_ids=np.arange(args.chains),
+    truth = case.truth(args.tail_threshold)
+    np.savez_compressed(args.output / f"means_{case.key}.npz", chain_ids=np.arange(args.chains),
                         iterations=args.iterations, burn_in=args.burn_in, target_mean=truth, **ordered)
     (args.output / "config.json").write_text(json.dumps(config, indent=2) + "\n")
     (args.output / "diagnostics.json").write_text(json.dumps(diagnostics, indent=2) + "\n")
-    with (args.output / f"chain_means_{CASE.key}.csv").open("w", newline="") as stream:
+    with (args.output / f"chain_means_{case.key}.csv").open("w", newline="") as stream:
         writer = csv.writer(stream)
         writer.writerow(["chain_id", *ordered])
         writer.writerows([i, *(values[i] for values in ordered.values())] for i in range(args.chains))
-    rows = [{"case": CASE.key, "method": key, "chains": args.chains,
+    rows = [{"case": case.key, "method": key, "chains": args.chains,
              "iterations": args.iterations, "burn_in": args.burn_in,
              "retained": args.iterations-args.burn_in, "target_mean": truth,
              "mean_of_chain_means": float(np.mean(values)),
@@ -156,17 +177,23 @@ def save_results(args, means, diagnostics, config):
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, default=ROOT / "paper/data")
+    parser.add_argument("--case", choices=list(CASE_METHOD_KEYS), default="t1_tail")
+    parser.add_argument("--methods", nargs="+", choices=[method.key for method in paper_methods()],
+                        help="Methods to run; defaults to those used in the selected case's figures")
+    parser.add_argument("--output", type=Path, default=None,
+                        help="Default: clt_qq/paper/data_80k/<case>")
     parser.add_argument("--baseline", type=Path, default=ROOT / "examples/simple")
     parser.add_argument("--recompute", action="store_true", help="Rerun all methods, including baseline samplers")
     parser.add_argument("--chains", type=int, default=2000)
-    parser.add_argument("--iterations", type=int, default=30000)
+    parser.add_argument("--iterations", type=int, default=120000)
     parser.add_argument("--burn-in", type=int, default=None)
     parser.add_argument("--step-size", type=float, default=0.35)
     parser.add_argument("--tail-threshold", type=float, default=2.0)
     parser.add_argument("--seed", type=int, default=20260925)
     parser.add_argument("--workers", type=int, default=min(6, os.cpu_count() or 1))
     parser.add_argument("--batch-size", type=int, default=128)
+    parser.add_argument("--nuts-batch-size", type=int, default=16,
+                        help="NUTS chains per worker batch; chain streams do not depend on this partition")
     args = parser.parse_args(argv)
     if args.burn_in is None:
         args.burn_in = args.iterations // 3
@@ -174,8 +201,10 @@ def parse_args(argv=None):
         parser.error("Require chains >= 8 and 0 <= burn-in < iterations")
     if any(not math.isfinite(value) or value <= 0 for value in (args.step_size, args.tail_threshold)):
         parser.error("Step size and threshold must be finite and positive")
-    if args.seed < 0 or args.workers < 1 or args.batch_size < 1:
-        parser.error("Require seed >= 0, workers >= 1, batch-size >= 1")
+    if args.seed < 0 or args.workers < 1 or min(args.batch_size, args.nuts_batch_size) < 1:
+        parser.error("Require seed >= 0, workers >= 1, batch-size >= 1 and nuts-batch-size >= 1")
+    if args.output is None:
+        args.output = ROOT / "paper/data_80k" / args.case
     args.output, args.baseline = args.output.resolve(), args.baseline.resolve()
     if args.output == args.baseline:
         parser.error("Output must differ from the baseline directory")
@@ -184,15 +213,20 @@ def parse_args(argv=None):
 
 def main(argv=None):
     args = parse_args(argv)
+    case = selected_case(args)
+    methods = selected_methods(args)
     args.output.mkdir(parents=True, exist_ok=True)
     means, diagnostics, previous_config = ({}, {}, {}) if args.recompute else load_saved(args.output, args)
     baseline, baseline_info, baseline_config = ({}, {}, {}) if args.recompute else load_saved(args.baseline, args, True)
     for key, values in baseline.items():
         if key not in means:
             means[key] = values
-            diagnostics[f"{CASE.key}/{key}"] = baseline_info[f"{CASE.key}/{key}"]
+            diagnostics[f"{case.key}/{key}"] = baseline_info[f"{case.key}/{key}"]
     config = {
         **{key: getattr(args, key) for key in SETTING_KEYS},
+        "case": case.key, "df": case.df, "observable": case.observable,
+        "methods_requested": [method.key for method in methods],
+        "nuts_batch_size": min(args.batch_size, args.nuts_batch_size),
         "experiment_signature": signature(args), "workers_requested": args.workers,
         "retained_per_chain": args.iterations-args.burn_in,
         "initialization": "Every chain starts at zero",
@@ -204,12 +238,12 @@ def main(argv=None):
     }
     if "nuts" in means:
         config["nuts"] = (previous_config if "nuts" in previous_config else baseline_config)["nuts"]
-    else:
+    elif any(method.kind == "nuts" for method in methods):
         from .nuts import backend_metadata
         config["nuts"] = {**backend_metadata(), "step_size": args.step_size,
                           "inverse_mass_matrix": [1.0], "adaptation": False, "precision": "float64"}
     save_results(args, means, diagnostics, config)
-    missing = [method for method in paper_methods() if method.key not in means]
+    missing = [method for method in methods if method.key not in means]
     print(f"Reuse {len(means)} methods; simulate {len(missing)} methods: "
           f"{args.chains:,} chains x {args.iterations:,} transitions; "
           f"{args.burn_in:,} burn-in; {args.workers} workers", flush=True)
@@ -217,12 +251,12 @@ def main(argv=None):
                if args.workers > 1 and missing else nullcontext(None))
     with context as pool:
         for method in missing:
-            print(f"{CASE.key}/{method.key} ...", flush=True)
+            print(f"{case.key}/{method.key} ...", flush=True)
             start = time.perf_counter()
-            values, info = run_ensemble(CASE, method, args, pool, progress=True)
+            values, info = run_ensemble(case, method, args, pool, progress=True)
             info["seconds"] = time.perf_counter()-start
             info["provenance"] = {"kind": "paper_experiment", "module": "clt_qq.paper_experiment"}
-            means[method.key], diagnostics[f"{CASE.key}/{method.key}"] = values, info
+            means[method.key], diagnostics[f"{case.key}/{method.key}"] = values, info
             save_results(args, means, diagnostics, config)
             print(f"  {info['chains_completed']:,} chains in {info['seconds']:.1f}s; "
                   f"{info['worker_processes_used']} worker processes", flush=True)

@@ -1,0 +1,236 @@
+{
+  "t1_tail/hmc_5": {
+    "chains_completed": 2000,
+    "worker_pids": [
+      6887,
+      6888,
+      6889,
+      6890,
+      6891,
+      6892
+    ],
+    "worker_processes_used": 6,
+    "batches": 16,
+    "iterations_per_chain": 120000,
+    "burn_in_per_chain": 40000,
+    "retained_per_chain": 80000,
+    "force_evals_per_retained_draw": 6.0,
+    "acceptance_rate": 0.993312625,
+    "mean_integration_acceptance_probability": null,
+    "depth_cap_fraction": null,
+    "divergence_fraction": null,
+    "seconds": 20.94594637499904,
+    "provenance": {
+      "kind": "paper_experiment",
+      "module": "clt_qq.paper_experiment"
+    }
+  },
+  "t1_tail/hmc_10": {
+    "chains_completed": 2000,
+    "worker_pids": [
+      6887,
+      6888,
+      6889,
+      6890,
+      6891,
+      6892
+    ],
+    "worker_processes_used": 6,
+    "batches": 16,
+    "iterations_per_chain": 120000,
+    "burn_in_per_chain": 40000,
+    "retained_per_chain": 80000,
+    "force_evals_per_retained_draw": 11.0,
+    "acceptance_rate": 0.9941030875,
+    "mean_integration_acceptance_probability": null,
+    "depth_cap_fraction": null,
+    "divergence_fraction": null,
+    "seconds": 33.98004220799885,
+    "provenance": {
+      "kind": "paper_experiment",
+      "module": "clt_qq.paper_experiment"
+    }
+  },
+  "t1_tail/hmc_20": {
+    "chains_completed": 2000,
+    "worker_pids": [
+      6887,
+      6888,
+      6889,
+      6890,
+      6891,
+      6892
+    ],
+    "worker_processes_used": 6,
+    "batches": 16,
+    "iterations_per_chain": 120000,
+    "burn_in_per_chain": 40000,
+    "retained_per_chain": 80000,
+    "force_evals_per_retained_draw": 21.0,
+    "acceptance_rate": 0.9933857,
+    "mean_integration_acceptance_probability": null,
+    "depth_cap_fraction": null,
+    "divergence_fraction": null,
+    "seconds": 59.49266512500071,
+    "provenance": {
+      "kind": "paper_experiment",
+      "module": "clt_qq.paper_experiment"
+    }
+  },
+  "t1_tail/hmc_uniform_9": {
+    "chains_completed": 2000,
+    "worker_pids": [
+      6887,
+      6888,
+      6889,
+      6890,
+      6891,
+      6892
+    ],
+    "worker_processes_used": 6,
+    "batches": 16,
+    "iterations_per_chain": 120000,
+    "burn_in_per_chain": 40000,
+    "retained_per_chain": 80000,
+    "force_evals_per_retained_draw": 5.99975425625,
+    "acceptance_rate": 0.9940624875,
+    "mean_integration_acceptance_probability": null,
+    "depth_cap_fraction": null,
+    "divergence_fraction": null,
+    "seconds": 37.217079957999886,
+    "provenance": {
+      "kind": "paper_experiment",
+      "module": "clt_qq.paper_experiment"
+    }
+  },
+  "t1_tail/hmc_uniform_19": {
+    "chains_completed": 2000,
+    "worker_pids": [
+      6887,
+      6888,
+      6889,
+      6890,
+      6891,
+      6892
+    ],
+    "worker_processes_used": 6,
+    "batches": 16,
+    "iterations_per_chain": 120000,
+    "burn_in_per_chain": 40000,
+    "retained_per_chain": 80000,
+    "force_evals_per_retained_draw": 11.00020618125,
+    "acceptance_rate": 0.993858275,
+    "mean_integration_acceptance_probability": null,
+    "depth_cap_fraction": null,
+    "divergence_fraction": null,
+    "seconds": 64.12825166699986,
+    "provenance": {
+      "kind": "paper_experiment",
+      "module": "clt_qq.paper_experiment"
+    }
+  },
+  "t1_tail/hmc_uniform_39": {
+    "chains_completed": 2000,
+    "worker_pids": [
+      6887,
+      6888,
+      6889,
+      6890,
+      6891,
+      6892
+    ],
+    "worker_processes_used": 6,
+    "batches": 16,
+    "iterations_per_chain": 120000,
+    "burn_in_per_chain": 40000,
+    "retained_per_chain": 80000,
+    "force_evals_per_retained_draw": 21.0004144125,
+    "acceptance_rate": 0.9934212375,
+    "mean_integration_acceptance_probability": null,
+    "depth_cap_fraction": null,
+    "divergence_fraction": null,
+    "seconds": 116.68782108300002,
+    "provenance": {
+      "kind": "paper_experiment",
+      "module": "clt_qq.paper_experiment"
+    }
+  },
+  "t1_tail/hmc_two_point_9": {
+    "chains_completed": 2000,
+    "worker_pids": [
+      6887,
+      6888,
+      6889,
+      6890,
+      6891,
+      6892
+    ],
+    "worker_processes_used": 6,
+    "batches": 16,
+    "iterations_per_chain": 120000,
+    "burn_in_per_chain": 40000,
+    "retained_per_chain": 80000,
+    "force_evals_per_retained_draw": 6.0001526,
+    "acceptance_rate": 0.99516405625,
+    "mean_integration_acceptance_probability": null,
+    "depth_cap_fraction": null,
+    "divergence_fraction": null,
+    "seconds": 35.515407082999445,
+    "provenance": {
+      "kind": "paper_experiment",
+      "module": "clt_qq.paper_experiment"
+    }
+  },
+  "t1_tail/hmc_two_point_39": {
+    "chains_completed": 2000,
+    "worker_pids": [
+      6887,
+      6888,
+      6889,
+      6890,
+      6891,
+      6892
+    ],
+    "worker_processes_used": 6,
+    "batches": 16,
+    "iterations_per_chain": 120000,
+    "burn_in_per_chain": 40000,
+    "retained_per_chain": 80000,
+    "force_evals_per_retained_draw": 21.002952125,
+    "acceptance_rate": 0.9942567875,
+    "mean_integration_acceptance_probability": null,
+    "depth_cap_fraction": null,
+    "divergence_fraction": null,
+    "seconds": 121.33631845799937,
+    "provenance": {
+      "kind": "paper_experiment",
+      "module": "clt_qq.paper_experiment"
+    }
+  },
+  "t1_tail/nuts": {
+    "chains_completed": 2000,
+    "worker_pids": [
+      6769,
+      6770,
+      6771,
+      6773,
+      6774,
+      6775
+    ],
+    "worker_processes_used": 6,
+    "batches": 500,
+    "iterations_per_chain": 120000,
+    "burn_in_per_chain": 40000,
+    "retained_per_chain": 80000,
+    "force_evals_per_retained_draw": 18.4889972125,
+    "acceptance_rate": null,
+    "mean_integration_acceptance_probability": 0.9934294802773459,
+    "depth_cap_fraction": 0.00224225,
+    "divergence_fraction": 0.0,
+    "seconds": 785.8027125419994,
+    "provenance": {
+      "kind": "paper_experiment",
+      "module": "clt_qq.paper_experiment"
+    }
+  }
+}
