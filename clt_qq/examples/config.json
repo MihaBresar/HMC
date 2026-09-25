@@ -1,0 +1,33 @@
+{
+  "replicates": 128,
+  "lengths": [
+    250,
+    1000,
+    4000
+  ],
+  "step_size": 0.35,
+  "fixed_steps": [
+    5,
+    10
+  ],
+  "random_max": 10,
+  "max_depth": 7,
+  "unadjusted_burn_in": 1000,
+  "tail_threshold": 2.0,
+  "seed": 20260925,
+  "workers": 3,
+  "cases": [
+    "t3_abs",
+    "t1_tail",
+    "t1p5_tail"
+  ],
+  "methods": null,
+  "output": "clt_qq/examples",
+  "python_version": "3.14.2",
+  "numpy_version": "2.4.0",
+  "scipy_version": "1.16.3",
+  "matplotlib_version": "3.10.8",
+  "initialization": "Independent exact target draws; burn-in for ULA/UHMC only",
+  "cost_note": "Force evaluations exclude burn-in; comparisons use equal retained iterations, not equal work",
+  "ula_note": "ULA/UHMC target errors include bias; their invariant laws are not exactly Student t"
+}
