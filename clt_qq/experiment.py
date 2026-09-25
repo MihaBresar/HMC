@@ -1,7 +1,7 @@
 """QQ plots of independent Monte Carlo averages, not of raw target draws.
 
 Run: python -m clt_qq.experiment
-Only NumPy, SciPy and Matplotlib are required; see README.md for interpretation.
+NUTS uses BlackJAX; see README.md for dependencies and interpretation.
 """
 
 import argparse
@@ -12,6 +12,7 @@ import csv
 import hashlib
 import json
 import math
+import multiprocessing
 import os
 from pathlib import Path
 import sys
@@ -20,9 +21,6 @@ import time
 import numpy as np
 from scipy.special import gammaln
 from scipy.stats import t
-
-from .nuts import nuts_step
-
 
 @dataclass(frozen=True)
 class Case:
@@ -67,7 +65,7 @@ def methods_for(args):
             methods.append(Method(f"{prefix}_{steps}", f"{label}, L={steps}", "fixed", steps, adjusted))
         methods.append(Method(f"{prefix}_random", f"{label}, L~Unif[1,{args.random_max}]",
                               "random", args.random_max, adjusted))
-    methods.append(Method("nuts", f"NUTS, max depth={args.max_depth}", "nuts", adjusted=True))
+    methods.append(Method("nuts", "NUTS", "nuts", adjusted=True))
     if args.methods:
         unknown = set(args.methods) - {m.key for m in methods}
         if unknown:
@@ -150,28 +148,14 @@ def run_vectorized(case, method, args, batch_id=0, count=None):
                              "depth_caps": 0, "divergences": 0}
 
 
-def _nuts_replicate(case, args, chain_id):
-    rng = rng_for(args.seed, case.key, "nuts", chain_id)
-    x = 0.0
-    total = 0.0
-    leapfrogs, caps, divergences = 0, 0, 0
-    for iteration in range(args.iterations):
-        x, cost, cap, divergent = nuts_step(x, case.df, args.step_size, args.max_depth, rng)
-        if iteration >= args.burn_in:
-            total += float(case.values(x, args.tail_threshold))
-            leapfrogs += cost
-            caps += cap
-            divergences += divergent
-    return total / (args.iterations - args.burn_in), leapfrogs, caps, divergences
-
-
 def _run_batch(task):
     case, method, args, start, count, batch_id = task
     if method.kind == "nuts":
-        results = [_nuts_replicate(case, args, i) for i in range(start, start + count)]
-        means = np.array([r[0] for r in results])
-        stats = {"force_evals": 2 * sum(r[1] for r in results), "accepted": 0,
-                 "depth_caps": sum(r[2] for r in results), "divergences": sum(r[3] for r in results)}
+        from .nuts import run_nuts_batch
+        means, stats = run_nuts_batch(
+            case.df, case.observable, args.tail_threshold, args.seed,
+            start, count, args.iterations, args.burn_in, args.step_size,
+        )
     else:
         means, stats = run_vectorized(case, method, args, batch_id, count)
     return start, means, stats, os.getpid()
@@ -189,7 +173,8 @@ def run_ensemble(case, method, args, pool=None, progress=False):
     tasks = [(case, method, args, start, min(batch_size, args.chains-start), batch_id)
              for batch_id, start in enumerate(range(0, args.chains, batch_size))]
     if pool is None and args.workers > 1:
-        with ProcessPoolExecutor(max_workers=args.workers) as own_pool:
+        with ProcessPoolExecutor(max_workers=args.workers,
+                                 mp_context=multiprocessing.get_context("spawn")) as own_pool:
             return run_ensemble(case, method, args, own_pool, progress)
     if pool is None:
         results = map(_run_batch, tasks)
@@ -199,23 +184,27 @@ def run_ensemble(case, method, args, pool=None, progress=False):
     means = np.empty(args.chains)
     totals = {"force_evals": 0, "accepted": 0, "depth_caps": 0, "divergences": 0}
     pids = set()
+    acceptance_sums = []
     completed, reported = 0, time.monotonic()
     for start, values, stats, pid in results:
         means[start:start+len(values)] = values
         for key in totals:
             totals[key] += stats[key]
+        acceptance_sums.append(stats["accepted"])
         pids.add(pid)
         completed += len(values)
         if progress and time.monotonic() - reported > 20:
             print(f"  {completed:,}/{args.chains:,} chains complete", flush=True)
             reported = time.monotonic()
     draws = args.chains * (args.iterations - args.burn_in)
+    totals["accepted"] = math.fsum(acceptance_sums)
     info = {"chains_completed": completed, "worker_pids": sorted(pids),
             "worker_processes_used": len(pids), "batches": len(tasks),
             "iterations_per_chain": args.iterations, "burn_in_per_chain": args.burn_in,
             "retained_per_chain": args.iterations-args.burn_in,
             "force_evals_per_retained_draw": totals["force_evals"] / draws,
             "acceptance_rate": totals["accepted"] / draws if method.adjusted and method.kind != "nuts" else None,
+            "mean_integration_acceptance_probability": totals["accepted"] / draws if method.kind == "nuts" else None,
             "depth_cap_fraction": totals["depth_caps"] / draws if method.kind == "nuts" else None,
             "divergence_fraction": totals["divergences"] / draws if method.kind == "nuts" else None}
     return means, info
@@ -230,7 +219,6 @@ def parse_args(argv=None):
     parser.add_argument("--step-size", type=float, default=0.35, help="Leapfrog epsilon; ULA h=epsilon^2/2")
     parser.add_argument("--fixed-steps", type=int, nargs="+", default=[5, 10], help="Fixed HMC leapfrog counts")
     parser.add_argument("--random-max", type=int, default=10, help="Random L is uniform on 1,...,this value")
-    parser.add_argument("--max-depth", type=int, default=7, help="NUTS tree depth cap")
     parser.add_argument("--tail-threshold", type=float, default=2.0, help="One-sided event x >= threshold (paper Figure 1)")
     parser.add_argument("--seed", type=int, default=20260925)
     parser.add_argument("--workers", type=int, default=min(6, os.cpu_count() or 1), help="Worker processes for ALL samplers")
@@ -251,8 +239,8 @@ def parse_args(argv=None):
         parser.error("--step-size must be finite and positive")
     if not math.isfinite(args.tail_threshold) or args.tail_threshold <= 0:
         parser.error("--tail-threshold must be finite and positive")
-    if args.workers < 1 or not 1 <= args.max_depth <= 15 or args.seed < 0 or args.batch_size < 1:
-        parser.error("Require workers >= 1, depth in [1,15], seed >= 0, batch-size >= 1")
+    if args.workers < 1 or args.seed < 0 or args.batch_size < 1:
+        parser.error("Require workers >= 1, seed >= 0, batch-size >= 1")
     args.fixed_steps = sorted(set(args.fixed_steps))
     try:
         methods_for(args)
@@ -277,11 +265,18 @@ def main(argv=None):
                   qq="Raw chain means versus Normal(mean(chain_means), var(chain_means, ddof=1)); identity line; no sqrt(n)",
                   cost_note="Force evaluations exclude burn-in; equal iterations, not equal work",
                   rng_note="Independent streams by case/method/batch; per-chain streams for NUTS; worker count does not change results")
+    if any(method.kind == "nuts" for method in methods):
+        from .nuts import backend_metadata
+        config["nuts"] = backend_metadata()
+        config["nuts"].update(step_size=args.step_size, inverse_mass_matrix=[1.0],
+                              adaptation=False, precision="float64")
     (args.output / "config.json").write_text(json.dumps(config, indent=2) + "\n")
     print(f"{args.chains:,} chains x {args.iterations:,} iterations; "
           f"discard first {args.burn_in:,}; {args.workers} worker processes", flush=True)
     summaries, diagnostics = [], {}
-    context = ProcessPoolExecutor(max_workers=args.workers) if args.workers > 1 else nullcontext(None)
+    context = (ProcessPoolExecutor(max_workers=args.workers,
+                                   mp_context=multiprocessing.get_context("spawn"))
+               if args.workers > 1 else nullcontext(None))
     with context as pool:
         for case in CASES:
             if case.key not in args.cases:

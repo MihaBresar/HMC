@@ -4,6 +4,10 @@ Every panel contains **2,000 independent chain averages**. Each chain starts
 at zero, runs for 30,000 iterations, discards its first 10,000, and averages the
 remaining 20,000 observations. Six worker processes are used for every sampler.
 
+NUTS results use **BlackJAX 1.6.2 / JAX 0.11.2**, with the standard kernel and
+library defaults for trajectory construction. Step size is 0.35 and mass is 1,
+with no parameter adaptation. These replace the earlier handwritten NUTS results.
+
 The QQ axes are raw ergodic averages and quantiles of the Gaussian fitted to
 their empirical mean and standard deviation. There is no square-root-n scaling.
 

@@ -170,23 +170,24 @@
   "t3_abs/nuts": {
     "chains_completed": 2000,
     "worker_pids": [
-      3019,
-      3020,
-      3021,
-      3022,
-      3023,
-      3024
+      4519,
+      4520,
+      4521,
+      4522,
+      4523,
+      4524
     ],
     "worker_processes_used": 6,
     "batches": 125,
     "iterations_per_chain": 30000,
     "burn_in_per_chain": 10000,
     "retained_per_chain": 20000,
-    "force_evals_per_retained_draw": 14.3520085,
+    "force_evals_per_retained_draw": 7.17614115,
     "acceptance_rate": null,
-    "depth_cap_fraction": 2.795e-05,
+    "mean_integration_acceptance_probability": 0.9936875252820151,
+    "depth_cap_fraction": 2.5e-08,
     "divergence_fraction": 0.0,
-    "seconds": 94.38615000000027
+    "seconds": 57.739664458000334
   },
   "t1_tail/iid": {
     "chains_completed": 2000,
@@ -359,23 +360,24 @@
   "t1_tail/nuts": {
     "chains_completed": 2000,
     "worker_pids": [
-      3019,
-      3020,
-      3021,
-      3022,
-      3023,
-      3024
+      4519,
+      4520,
+      4521,
+      4522,
+      4523,
+      4524
     ],
     "worker_processes_used": 6,
     "batches": 125,
     "iterations_per_chain": 30000,
     "burn_in_per_chain": 10000,
     "retained_per_chain": 20000,
-    "force_evals_per_retained_draw": 27.1176579,
+    "force_evals_per_retained_draw": 18.41725765,
     "acceptance_rate": null,
-    "depth_cap_fraction": 0.0175929,
+    "mean_integration_acceptance_probability": 0.9934312618467085,
+    "depth_cap_fraction": 0.00220685,
     "divergence_fraction": 0.0,
-    "seconds": 174.2537922079996
+    "seconds": 324.1360381250006
   },
   "t1p5_tail/iid": {
     "chains_completed": 2000,
@@ -548,22 +550,23 @@
   "t1p5_tail/nuts": {
     "chains_completed": 2000,
     "worker_pids": [
-      3019,
-      3020,
-      3021,
-      3022,
-      3023,
-      3024
+      4519,
+      4520,
+      4521,
+      4522,
+      4523,
+      4524
     ],
     "worker_processes_used": 6,
     "batches": 125,
     "iterations_per_chain": 30000,
     "burn_in_per_chain": 10000,
     "retained_per_chain": 20000,
-    "force_evals_per_retained_draw": 18.9821401,
+    "force_evals_per_retained_draw": 10.0579872,
     "acceptance_rate": null,
-    "depth_cap_fraction": 0.003130775,
+    "mean_integration_acceptance_probability": 0.9938970887725052,
+    "depth_cap_fraction": 0.00014095,
     "divergence_fraction": 0.0,
-    "seconds": 124.85697879100007
+    "seconds": 126.99429249999957
   }
 }

@@ -12,7 +12,8 @@ python -m clt_qq.experiment --workers 6
 
 Defaults: **2,000 chains per sampler and target, 30,000 iterations per chain,
 10,000 discarded, 20,000 retained**. Output goes to `clt_qq/output/simple/`.
-Python 3.10+, NumPy, SciPy and Matplotlib are sufficient.
+Python 3.12+ is required by the pinned JAX version. Dependencies include NumPy,
+SciPy, Matplotlib, JAX and BlackJAX.
 
 ## View the new results
 
@@ -92,13 +93,16 @@ Yes. With `--workers 6`, **all samplers** run across up to six Python worker
 processes. ULA and HMC split the chains into fixed batches of 128. Inside each
 batch, a NumPy vector has a separate position and accumulator for every
 chain, with independent noise, momenta and random leapfrog counts for its
-coordinates. Batches use separate random streams. NUTS uses a separate random
-generator for every chain and schedules small groups of chains to workers.
+coordinates. Batches use separate random streams. NUTS uses an independent JAX
+random key for every numbered chain and runs compiled batches of up to 16 chains
+per worker. These small batches limit the waiting caused by different adaptive
+trajectory lengths.
 
 Chains never share their positions or averages, and one long chain is never
 split into artificial replicates. Worker scheduling does not affect the
 results. Changing worker count leaves the raw averages unchanged; changing
-vector batch size can change the random streams. With fewer chains than the
+NumPy vector batch size can change the random streams. NUTS streams are stable
+across batch sizes too. With fewer chains than the
 batch size, a vectorized sampler uses only one batch/worker.
 
 `diagnostics.json` records the actual worker process IDs, completed chain
@@ -113,9 +117,19 @@ All use fixed leapfrog epsilon `0.35` and unit-mass Gaussian momentum.
 - Fixed HMC: `L=5` or `L=10`, with or without the Metropolis correction.
 - Random HMC: independently draw integer `L` uniformly from 1 through 10 on
   every transition, with or without the Metropolis correction.
-- NUTS: [Hoffman–Gelman Algorithm 3](https://jmlr.org/papers/v15/hoffman14a.html),
-  efficient slice NUTS, fixed epsilon, depth capped at 7. Cap-hit and divergence
-  rates are recorded. No warm-up tuning is performed.
+- NUTS: the standard [BlackJAX NUTS kernel](https://blackjax-devs.github.io/blackjax/autoapi/blackjax/mcmc/nuts/index.html),
+  using iterative multinomial sampling and the library's default trajectory
+  limit, turning criterion, integrator and divergence threshold. The constructor
+  is simply `blackjax.nuts(logdensity, step_size, inverse_mass_matrix)`.
+  No maximum-depth argument is passed or exposed by the experiment. The installed
+  versions and actual library default are recorded in `config.json` for
+  reproducibility; the plot label is just **NUTS**. Cap-hit and divergence rates
+  remain in the diagnostics.
+
+Step size and unit mass stay fixed throughout each chain, including NUTS, so
+the independent averages refer to the same kernel. Discarding the first third
+is burn-in, not parameter adaptation. This is BlackJAX 1.6.2 with JAX 0.11.2 in
+double precision; the earlier handwritten slice sampler has been replaced.
 
 Only basic methods and one target:
 
@@ -137,13 +151,15 @@ python -m clt_qq.experiment --chains 64 --iterations 300 --batch-size 16 --worke
 
 Use `--burn-in` to override the first-third rule, `--fixed-steps 1 5 20` to
 include MALA and other fixed lengths, `--random-max`, `--step-size`,
-`--max-depth`, `--tail-threshold`, and `--seed` to change the experiment.
+`--tail-threshold`, and `--seed` to change the experiment.
 `--replicates` is an alias for `--chains`; the former `--lengths` interface has
 been replaced by one `--iterations` value to keep the QQ plots simple.
 
 The comparisons use equal iterations, not equal gradient work. Retained-phase
-gradient cost is reported: 1 per ULA step, L+1 for HMC, and 2 per leapfrog for
-this NUTS implementation.
+gradient cost is reported: 1 per ULA step, L+1 for HMC, and 1 new gradient per
+BlackJAX leapfrog step, whose default integrator caches the current gradient.
+Initial gradients and burn-in are excluded. NUTS reports the mean integration
+acceptance probability separately from HMC's accepted-proposal fraction.
 
 ## Data and checks
 

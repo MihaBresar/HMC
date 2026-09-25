@@ -1,166 +1,150 @@
-"""Small, one-dimensional slice NUTS implementation for a Student-t target.
+"""Independent Student-t chains using BlackJAX's standard NUTS kernel.
 
-This is Algorithm 3 of Hoffman and Gelman (2014), with a fixed step size and
-a maximum tree depth. There is no warm-up adaptation or multinomial sampling.
-Reference: https://jmlr.org/papers/v15/hoffman14a.html
+The library's trajectory limit, divergence threshold, proposal selection and
+turning criterion are left at their defaults. Step size and unit mass are fixed
+to match the other samplers in this experiment; discarded iterations are burn-in,
+not parameter adaptation. JAX imports are lazy so the parent process can launch
+workers without first initializing a multithreaded JAX runtime.
 """
 
 from __future__ import annotations
 
+from functools import lru_cache
+import hashlib
+import inspect
 import math
-from typing import NamedTuple
 
 import numpy as np
 
 
-_MAX_SLICE_ENERGY_ERROR = 1000.0
+@lru_cache(maxsize=1)
+def _backend():
+    import blackjax
+    import jax
+    import jax.numpy as jnp
+
+    # Tail excursions and long sums benefit from double precision. Configure it
+    # before creating any arrays or compiling the sampler in this worker.
+    jax.config.update("jax_enable_x64", True)
+    return blackjax, jax, jnp
 
 
-def _potential(x: float, df: float) -> float:
-    """Student-t negative log density, omitting its normalizing constant."""
-    return 0.5 * (df + 1.0) * math.log1p(x * x / df)
+def backend_metadata() -> dict:
+    """Report the installed implementation and its actual default trajectory cap."""
+    blackjax, jax, _ = _backend()
+    default = inspect.signature(blackjax.mcmc.nuts.as_top_level_api).parameters[
+        "max_num_doublings"
+    ].default
+    return {
+        "backend": "blackjax.nuts",
+        "blackjax_version": blackjax.__version__,
+        "jax_version": jax.__version__,
+        "default_max_num_doublings": int(default),
+    }
 
 
-def _gradient(x: float, df: float) -> float:
-    return (df + 1.0) * x / (df + x * x)
+@lru_cache(maxsize=32)
+def _compiled_runner(df, observable, threshold, iterations, burn_in, step_size):
+    """Cache a compiled, vectorized batch kernel for each experiment setting."""
+    blackjax, jax, jnp = _backend()
+    default_doublings = backend_metadata()["default_max_num_doublings"]
 
+    def logdensity(position):
+        return -0.5 * (df + 1.0) * jnp.sum(jnp.log1p(position * position / df))
 
-def _leapfrog(x: float, p: float, epsilon: float, df: float) -> tuple[float, float]:
-    """One reversible leapfrog step; negative epsilon integrates backwards."""
-    p_half = p - 0.5 * epsilon * _gradient(x, df)
-    x_new = x + epsilon * p_half
-    p_new = p_half - 0.5 * epsilon * _gradient(x_new, df)
-    return x_new, p_new
+    # Deliberately omit max_num_doublings: this is the standard library kernel,
+    # with its built-in default rather than an experiment-specific depth setting.
+    algorithm = blackjax.nuts(logdensity, step_size, jnp.ones(1))
 
+    def single_chain(base_key, chain_id):
+        key = jax.random.fold_in(base_key, chain_id)
+        state = algorithm.init(jnp.zeros(1))
+        zero_float = jnp.asarray(0.0, dtype=jnp.float64)
+        zero_int = jnp.asarray(0, dtype=jnp.int64)
 
-def _no_u_turn(x_left: float, p_left: float, x_right: float, p_right: float) -> bool:
-    displacement = x_right - x_left
-    return displacement * p_left >= 0.0 and displacement * p_right >= 0.0
+        def body(iteration, carry):
+            key, state, total, force_evals, accepted, depth_caps, divergences = carry
+            key, step_key = jax.random.split(key)
+            state, info = algorithm.step(step_key, state)
+            value = (jnp.abs(state.position[0]) if observable == "abs"
+                     else (state.position[0] >= threshold).astype(jnp.float64))
+            retain = iteration >= burn_in
+            hit_cap = ((info.num_trajectory_expansions >= default_doublings)
+                       & ~info.is_turning & ~info.is_divergent)
+            return (
+                key,
+                state,
+                total + jnp.where(retain, value, 0.0),
+                force_evals + jnp.where(retain, info.num_integration_steps, 0),
+                accepted + jnp.where(retain, info.acceptance_rate, 0.0),
+                depth_caps + (retain & hit_cap).astype(jnp.int64),
+                divergences + (retain & info.is_divergent).astype(jnp.int64),
+            )
 
-
-class _Tree(NamedTuple):
-    x_left: float
-    p_left: float
-    x_right: float
-    p_right: float
-    proposal: float
-    n_valid: int
-    keep_growing: bool
-    n_steps: int
-    divergent: bool
-
-
-def _build_tree(
-    x: float,
-    p: float,
-    log_slice: float,
-    direction: int,
-    depth: int,
-    epsilon: float,
-    df: float,
-    rng: np.random.Generator,
-) -> _Tree:
-    if depth == 0:
-        x_new, p_new = _leapfrog(x, p, direction * epsilon, df)
-        log_joint = -_potential(x_new, df) - 0.5 * p_new * p_new
-        finite = math.isfinite(x_new) and math.isfinite(p_new) and math.isfinite(log_joint)
-        n_valid = int(finite and log_slice <= log_joint)
-        safe = finite and log_joint > log_slice - _MAX_SLICE_ENERGY_ERROR
-        return _Tree(x_new, p_new, x_new, p_new, x_new, n_valid, safe, 1, not safe)
-
-    first = _build_tree(x, p, log_slice, direction, depth - 1, epsilon, df, rng)
-    if not first.keep_growing:
-        return first
-
-    if direction == -1:
-        second = _build_tree(
-            first.x_left, first.p_left, log_slice, direction, depth - 1, epsilon, df, rng
+        result = jax.lax.fori_loop(
+            0, iterations, body,
+            (key, state, zero_float, zero_int, zero_float, zero_int, zero_int),
         )
-        x_left, p_left = second.x_left, second.p_left
-        x_right, p_right = first.x_right, first.p_right
-    else:
-        second = _build_tree(
-            first.x_right, first.p_right, log_slice, direction, depth - 1, epsilon, df, rng
-        )
-        x_left, p_left = first.x_left, first.p_left
-        x_right, p_right = second.x_right, second.p_right
+        return (result[2] / (iterations - burn_in), *result[3:])
 
-    # Sample uniformly among the slice-valid points in the combined subtree.
-    n_valid = first.n_valid + second.n_valid
-    proposal = first.proposal
-    if n_valid and rng.random() < second.n_valid / n_valid:
-        proposal = second.proposal
-    keep_growing = second.keep_growing and _no_u_turn(x_left, p_left, x_right, p_right)
-    return _Tree(
-        x_left, p_left, x_right, p_right, proposal, n_valid, keep_growing,
-        first.n_steps + second.n_steps, first.divergent or second.divergent,
-    )
+    # Only the current states and running sums are kept. Neither trajectories
+    # nor an iterations-by-chains array of random keys is materialized.
+    return jax.jit(jax.vmap(single_chain, in_axes=(None, 0)))
 
 
-def nuts_step(
-    x: float,
+def run_nuts_batch(
     df: float,
+    observable: str,
+    threshold: float,
+    seed: int,
+    chain_start: int,
+    count: int,
+    iterations: int,
+    burn_in: int,
     step_size: float,
-    max_depth: int,
-    rng: np.random.Generator,
-) -> tuple[float, int, bool, bool]:
-    """Take one NUTS transition with fully refreshed standard-normal momentum.
+) -> tuple[np.ndarray, dict]:
+    """Run independent zero-started chains and return one raw mean per chain.
 
-    Return ``(position, leapfrog_steps, hit_depth_cap, divergent)``. At most
-    ``2**max_depth - 1`` leapfrog steps are used. ``hit_depth_cap`` means the
-    tree was still eligible to grow when the cap was reached; reaching that
-    depth simultaneously with a U-turn is not counted as hitting the cap.
-
-    ``divergent`` flags any nonfinite integration result or violation of the
-    original paper's slice safety check: H_new >= -log(slice) + 1000. This is
-    a one-sided error relative to the slice, not an absolute energy error.
-    A subtree that stopped internally cannot supply the returned proposal.
-
-    The target is the standard (location zero, scale one) Student-t law with
-    positive ``df``. A finite depth cap limits travel even far into the tails.
+    Random streams are indexed by target, observable and global chain ID, so
+    changing the worker count or batch partition does not change a chain's draws.
+    All diagnostics concern retained transitions only. ``accepted`` is the sum
+    of BlackJAX's mean integration acceptance probabilities, not a count of
+    accepted proposals. ``force_evals`` counts integration steps: BlackJAX's
+    default velocity Verlet integrator caches the current gradient and evaluates
+    one new gradient per step. The initial gradient and burn-in are excluded.
     """
-    if not math.isfinite(x):
-        raise ValueError("x must be finite")
-    if not math.isfinite(df) or df <= 0.0:
-        raise ValueError("df must be finite and positive")
-    if not math.isfinite(step_size) or step_size <= 0.0:
-        raise ValueError("step_size must be finite and positive")
-    if isinstance(max_depth, bool) or not isinstance(max_depth, (int, np.integer)) or max_depth < 1:
-        raise ValueError("max_depth must be a positive integer")
+    for name, value in (("df", df), ("step_size", step_size)):
+        if not math.isfinite(value) or value <= 0:
+            raise ValueError(f"{name} must be finite and positive")
+    if observable not in ("abs", "tail"):
+        raise ValueError("observable must be 'abs' or 'tail'")
+    if not math.isfinite(threshold):
+        raise ValueError("threshold must be finite")
+    for name, value in (("seed", seed), ("chain_start", chain_start),
+                        ("count", count), ("iterations", iterations),
+                        ("burn_in", burn_in)):
+        if isinstance(value, bool) or not isinstance(value, (int, np.integer)) or value < 0:
+            raise ValueError(f"{name} must be a nonnegative integer")
+    if count == 0 or iterations <= burn_in:
+        raise ValueError("count and the number of retained iterations must be positive")
+    if chain_start + count > 2**32:
+        raise ValueError("chain IDs must fit in an unsigned 32-bit integer")
 
-    x = float(x)
-    p = float(rng.normal())
-    log_joint = -_potential(x, df) - 0.5 * p * p
-    if not math.isfinite(log_joint):
-        raise ValueError("initial state has a nonfinite Hamiltonian")
-    # If E ~ Exponential(1), exp(-E) is Uniform(0, 1).
-    log_slice = log_joint - float(rng.exponential())
-    x_left = x_right = proposal = x
-    p_left = p_right = p
-    n_valid = 1  # The initial state is always in the slice.
-    keep_growing = True
-    n_steps = 0
-    divergent = False
-    depth = 0
-
-    while keep_growing and depth < max_depth:
-        direction = -1 if rng.random() < 0.5 else 1
-        if direction == -1:
-            tree = _build_tree(x_left, p_left, log_slice, direction, depth, step_size, df, rng)
-            x_left, p_left = tree.x_left, tree.p_left
-        else:
-            tree = _build_tree(x_right, p_right, log_slice, direction, depth, step_size, df, rng)
-            x_right, p_right = tree.x_right, tree.p_right
-
-        # Algorithm 3 uses n_new / n_old HERE, not n_new / (n_old + n_new).
-        # The latter ratio is used only inside _build_tree above.
-        if tree.keep_growing and rng.random() < min(1.0, tree.n_valid / n_valid):
-            proposal = tree.proposal
-        n_valid += tree.n_valid
-        keep_growing = tree.keep_growing and _no_u_turn(x_left, p_left, x_right, p_right)
-        n_steps += tree.n_steps
-        divergent = divergent or tree.divergent
-        depth += 1
-
-    hit_depth_cap = bool(keep_growing and depth == max_depth)
-    return proposal, n_steps, hit_depth_cap, divergent
+    _, jax, jnp = _backend()
+    identity = f"blackjax.nuts/{float(df).hex()}/{observable}".encode()
+    words = np.frombuffer(hashlib.sha256(identity).digest()[:16], dtype="<u4")
+    seed_words = np.random.SeedSequence([int(seed), *map(int, words)]).generate_state(2)
+    base_key = jax.random.fold_in(jax.random.key(seed_words[0]), seed_words[1])
+    chain_ids = jnp.arange(chain_start, chain_start + count, dtype=jnp.uint32)
+    runner = _compiled_runner(float(df), observable, float(threshold),
+                              int(iterations), int(burn_in), float(step_size))
+    means, force_evals, accepted, depth_caps, divergences = jax.device_get(
+        runner(base_key, chain_ids)
+    )
+    stats = {
+        "force_evals": int(np.sum(force_evals)),
+        "accepted": float(np.sum(accepted)),
+        "depth_caps": int(np.sum(depth_caps)),
+        "divergences": int(np.sum(divergences)),
+    }
+    return np.asarray(means, dtype=float), stats
