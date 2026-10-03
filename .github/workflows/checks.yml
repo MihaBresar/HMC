@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 15
     env:
       MPLBACKEND: Agg
-      MPLCONFIGDIR: ${{ runner.temp }}/matplotlib
+      MPLCONFIGDIR: /tmp/hmc-matplotlib
       JAX_PLATFORMS: cpu
       OPENBLAS_NUM_THREADS: "1"
       OMP_NUM_THREADS: "1"
