@@ -70,7 +70,7 @@ in the unadjusted methods.
 From the repository root:
 
 ```bash
-python -m pip install -r clt_qq/requirements.txt
+python -m pip install -r requirements.txt
 python -m clt_qq.paper_experiment --case t3_abs
 python -m clt_qq.paper_experiment --case t1_tail --nuts-batch-size 4
 python -m clt_qq.paper_figures
@@ -90,7 +90,11 @@ limits and SHA-256 hashes of both source NPZ files. The earlier all-Cauchy,
 Copy the `figures` directory into the manuscript directory and input the three
 LaTeX snippets at the relevant discussion points: after the initial CLT
 discussion, after the examples of admissible independent randomisation, and
-after the NUTS conjecture. The local placement note supplies exact anchors for
-the current manuscript. The figures use `T` to match its leapfrog-count notation.
+after the NUTS conjecture. The [public insertion guide](../../docs/FIGURES.md) supplies exact manuscript
+anchors and complete LaTeX blocks. The figures use `T` to match its leapfrog-count notation.
 
 PDFs have vector points/lines and embedded fonts; PNGs are exported at 400 dpi.
+
+Verify every saved average, summary, source hash, and panel mapping with
+`python -m clt_qq.verify_paper`. See the [reproduction guide](../../docs/REPRODUCING.md)
+for fresh runs and the [data dictionary](../../docs/DATA.md) for file formats.

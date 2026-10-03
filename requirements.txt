@@ -1,0 +1,13 @@
+# Exact scientific package versions used for the saved paper experiments.
+# Python 3.12+; recorded simulation interpreter: Python 3.14.2.
+# These pin the numerical stack, not every platform-specific dependency.
+numpy==2.4.0
+scipy==1.16.3
+matplotlib==3.10.8
+blackjax==1.6.2
+jax==0.11.2
+jaxlib==0.11.2
+optax==0.2.8
+opt_einsum==3.4.0
+ml_dtypes==0.6.0
+typing_extensions==4.15.0

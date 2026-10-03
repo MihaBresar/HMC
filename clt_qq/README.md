@@ -6,14 +6,15 @@ point.** The plots use the original average scale, with no multiplication or
 division by `sqrt(n)`.
 
 ```bash
-python -m pip install -r clt_qq/requirements.txt
+python -m pip install -r requirements.txt
 python -m clt_qq.experiment --workers 6
 ```
 
 Defaults: **2,000 chains per sampler and target, 30,000 iterations per chain,
 10,000 discarded, 20,000 retained**. Output goes to `clt_qq/output/simple/`.
-Python 3.12+ is required by the pinned JAX version. Dependencies include NumPy,
-SciPy, Matplotlib, JAX and BlackJAX.
+Python 3.12+ is required by the pinned JAX version. The root requirements pin the scientific package versions used for the saved
+paper results. `clt_qq/requirements.txt` provides looser requirements for general
+experiments; these do not pin the complete numerical stack.
 
 ## View the new results
 

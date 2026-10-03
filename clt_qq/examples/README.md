@@ -1,6 +1,7 @@
 # Experiment results
 
-The current **simple, original-scale QQ plots** are in [simple/](simple/).
+The **paper figures with 80,000 retained samples** are in [../paper/](../paper/README.md).
+The earlier **simple, original-scale QQ plots** are in [simple/](simple/).
 They use 2,000 independent chains per sampler/target, 30,000 total iterations,
 10,000 burn-in iterations, and process parallelism for every sampler.
 

@@ -217,12 +217,35 @@ def main(argv=None):
     methods = selected_methods(args)
     args.output.mkdir(parents=True, exist_ok=True)
     means, diagnostics, previous_config = ({}, {}, {}) if args.recompute else load_saved(args.output, args)
+    recorded_files = any(args.output.glob("means_*.npz")) or any(
+        args.output.glob("chain_means_*.csv")) or any(
+        (args.output / name).exists() for name in ("config.json", "diagnostics.json", "summary.csv"))
+    if not args.recompute and recorded_files and not previous_config:
+        raise ValueError(
+            f"Existing results in {args.output} are incomplete or incompatible with the requested "
+            "case/protocol. Use a fresh --output directory, or pass --recompute explicitly "
+            "to replace the selected case's results."
+        )
+    if all(method.key in means for method in methods):
+        # In particular, do not relabel archived draws with this invocation's
+        # library versions or worker settings, or change their file hashes.
+        print(f"Reuse {len(methods)} requested methods; no new simulations or file changes: "
+              f"{args.output}", flush=True)
+        return
     baseline, baseline_info, baseline_config = ({}, {}, {}) if args.recompute else load_saved(args.baseline, args, True)
     for key, values in baseline.items():
         if key not in means:
             means[key] = values
             diagnostics[f"{case.key}/{key}"] = baseline_info[f"{case.key}/{key}"]
-    config = {
+    missing = [method for method in methods if method.key not in means]
+    execution = {
+        "methods": [method.key for method in missing],
+        "python_version": sys.version.split()[0], "numpy_version": np.__version__,
+        "scipy_version": scipy.__version__, "workers_requested": args.workers,
+        "batch_size": args.batch_size,
+        "nuts_batch_size": min(args.batch_size, args.nuts_batch_size),
+    }
+    config = previous_config.copy() if previous_config else {
         **{key: getattr(args, key) for key in SETTING_KEYS},
         "case": case.key, "df": case.df, "observable": case.observable,
         "methods_requested": [method.key for method in methods],
@@ -238,12 +261,32 @@ def main(argv=None):
     }
     if "nuts" in means:
         config["nuts"] = (previous_config if "nuts" in previous_config else baseline_config)["nuts"]
-    elif any(method.kind == "nuts" for method in methods):
+    elif any(method.kind == "nuts" for method in missing):
         from .nuts import backend_metadata
         config["nuts"] = {**backend_metadata(), "step_size": args.step_size,
                           "inverse_mass_matrix": [1.0], "adaptation": False, "precision": "float64"}
+    if any(method.kind == "nuts" for method in missing):
+        execution["nuts"] = config["nuts"].copy()
+    if missing:
+        history = list(config.get("execution_history", []))
+        if previous_config and not history:
+            # Older result folders record their execution at the top level.
+            # Retain those fields and make their scope explicit when adding a
+            # later run. Unknown historical fields stay unknown.
+            original = {key: previous_config[key] for key in
+                        ("python_version", "numpy_version", "scipy_version",
+                         "workers_requested", "batch_size", "nuts_batch_size",
+                         "nuts", "execution_note") if key in previous_config}
+            original.update(methods=[method.key for method in paper_methods()
+                                     if method.key in means
+                                     and f"{case.key}/{method.key}" in diagnostics
+                                     and diagnostics[f"{case.key}/{method.key}"].get(
+                                         "provenance", {}).get("kind") != "reused_baseline"],
+                            source="Original saved configuration before continuation")
+            history.append(original)
+        history.append(execution)
+        config["execution_history"] = history
     save_results(args, means, diagnostics, config)
-    missing = [method for method in methods if method.key not in means]
     print(f"Reuse {len(means)} methods; simulate {len(missing)} methods: "
           f"{args.chains:,} chains x {args.iterations:,} transitions; "
           f"{args.burn_in:,} burn-in; {args.workers} workers", flush=True)
@@ -255,7 +298,8 @@ def main(argv=None):
             start = time.perf_counter()
             values, info = run_ensemble(case, method, args, pool, progress=True)
             info["seconds"] = time.perf_counter()-start
-            info["provenance"] = {"kind": "paper_experiment", "module": "clt_qq.paper_experiment"}
+            info["provenance"] = {"kind": "paper_experiment", "module": "clt_qq.paper_experiment",
+                                  "execution": execution}
             means[method.key], diagnostics[f"{case.key}/{method.key}"] = values, info
             save_results(args, means, diagnostics, config)
             print(f"  {info['chains_completed']:,} chains in {info['seconds']:.1f}s; "

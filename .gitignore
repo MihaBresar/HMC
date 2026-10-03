@@ -1,0 +1,21 @@
+# Environments, caches and new local experiment outputs
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mplconfig/
+.DS_Store
+clt_qq/output/
+sampler_comparison_output/
+
+# Manuscript development material kept locally, outside the companion code
+/AoAP_submission_assessment_*.md
+/literature_positioning_revision/
+/lower_bound_revision/
+/minimal_lower_bound_revision/
+/narrative_revision/
+/related_literature_revision/
+/updated_upload_check/
+/version_2_check/
+/version_3_check/
+/paper_figure_placement.md

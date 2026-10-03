@@ -1,10 +1,12 @@
 """Checks for the extra length laws and reproducible paper experiment."""
 
 from concurrent.futures import ProcessPoolExecutor
+import json
 import multiprocessing
 import tempfile
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 from scipy.special import stdtr
@@ -147,6 +149,90 @@ class PaperExperimentTests(unittest.TestCase):
             self.assertEqual(set(diagnostics), {"t3_abs/ula", "t3_abs/uhmc_10"})
             self.assertEqual(config["observable"], "abs")
             self.assertNotIn("nuts", config)
+
+    def test_completed_resume_leaves_every_saved_file_unchanged(self):
+        with tempfile.TemporaryDirectory() as directory:
+            common = ["--case", "t3_abs", "--output", directory, "--chains", "8",
+                      "--iterations", "15", "--methods", "ula"]
+            main([*common, "--workers", "1"])
+            path = Path(directory)
+            original = {file.name: file.read_bytes() for file in path.iterdir()}
+            with patch("clt_qq.paper_experiment.save_results") as save, \
+                    patch("clt_qq.paper_experiment.run_ensemble") as simulate:
+                main([*common, "--workers", "2", "--nuts-batch-size", "4"])
+            simulate.assert_not_called()
+            save.assert_not_called()
+            self.assertEqual({file.name: file.read_bytes() for file in path.iterdir()}, original)
+
+    def test_changed_protocol_requires_explicit_recompute_and_preserves_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            common = ["--case", "t3_abs", "--output", directory, "--chains", "8",
+                      "--iterations", "15", "--methods", "ula", "--workers", "1"]
+            main(common)
+            path = Path(directory)
+            original = {file.name: file.read_bytes() for file in path.iterdir()}
+            with self.assertRaisesRegex(ValueError, "incompatible.*--recompute"):
+                main([*common, "--step-size", "0.4"])
+            self.assertEqual({file.name: file.read_bytes() for file in path.iterdir()}, original)
+
+            main([*common, "--step-size", "0.4", "--recompute"])
+            means, diagnostics, config = load_saved(
+                path, parse_args([*common, "--step-size", "0.4"]))
+            self.assertEqual(set(means), {"ula"})
+            self.assertEqual(config["step_size"], 0.4)
+            self.assertEqual(diagnostics["t3_abs/ula"]["chains_completed"], 8)
+            self.assertNotEqual((path / "means_t3_abs.npz").read_bytes(),
+                                original["means_t3_abs.npz"])
+
+    def test_incomplete_result_folder_requires_explicit_recompute(self):
+        with tempfile.TemporaryDirectory() as directory:
+            common = ["--case", "t3_abs", "--output", directory, "--chains", "8",
+                      "--iterations", "15", "--methods", "ula", "--workers", "1"]
+            main(common)
+            path = Path(directory)
+            (path / "diagnostics.json").unlink()
+            original = {file.name: file.read_bytes() for file in path.iterdir()}
+            with self.assertRaisesRegex(ValueError, "incomplete.*--recompute"):
+                main(common)
+            self.assertEqual({file.name: file.read_bytes() for file in path.iterdir()}, original)
+            main([*common, "--recompute"])
+            self.assertEqual(load_saved(path, parse_args(common))[0].keys(), {"ula"})
+
+    def test_partial_resume_preserves_original_environment_and_records_new_execution(self):
+        with tempfile.TemporaryDirectory() as directory:
+            common = ["--case", "t3_abs", "--output", directory, "--chains", "8",
+                      "--iterations", "15", "--workers", "1"]
+            main([*common, "--methods", "ula"])
+            path = Path(directory)
+            config_path = path / "config.json"
+            original_config = json.loads(config_path.read_text())
+            # Existing published folders predate explicit execution histories.
+            original_config.pop("execution_history")
+            original_config["execution_note"] = "Original archived execution note"
+            config_path.write_text(json.dumps(original_config))
+            original_diagnostics = json.loads((path / "diagnostics.json").read_text())
+            with np.load(path / "means_t3_abs.npz") as archive:
+                original_means = archive["ula"].copy()
+
+            with patch("clt_qq.paper_experiment.np.__version__", "later-numpy"), \
+                    patch("clt_qq.paper_experiment.scipy.__version__", "later-scipy"):
+                main([*common, "--methods", "uhmc_10", "--nuts-batch-size", "4"])
+
+            means, diagnostics, config = load_saved(path, parse_args(common))
+            np.testing.assert_array_equal(means["ula"], original_means)
+            self.assertEqual(diagnostics["t3_abs/ula"], original_diagnostics["t3_abs/ula"])
+            for key, value in original_config.items():
+                self.assertEqual(config[key], value)
+            original_execution, later_execution = config["execution_history"]
+            self.assertEqual(original_execution["methods"], ["ula"])
+            self.assertEqual(original_execution["numpy_version"], original_config["numpy_version"])
+            self.assertEqual(original_execution["execution_note"], original_config["execution_note"])
+            self.assertEqual(later_execution["methods"], ["uhmc_10"])
+            self.assertEqual(later_execution["numpy_version"], "later-numpy")
+            self.assertEqual(later_execution["scipy_version"], "later-scipy")
+            self.assertEqual(later_execution["nuts_batch_size"], 4)
+            self.assertEqual(diagnostics["t3_abs/uhmc_10"]["provenance"]["execution"],
+                             later_execution)
 
     def test_saved_case_and_embedded_metadata_must_match(self):
         with tempfile.TemporaryDirectory() as directory:
